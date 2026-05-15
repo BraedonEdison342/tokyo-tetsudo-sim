@@ -1,4 +1,5 @@
 import cupy as np
+import cudf as cp
 import pickle
 import time
 from data_node_builder import setup
@@ -13,7 +14,8 @@ def tick(agent_table, lookup_table, col_to_state, sleep_duration):
     """
     tick_time = 0
     arrived_total = 0
-
+    master_usage = None
+ 
     while True:
         total_minutes = tick_time // 6
         current_hour = (total_minutes // 60) % 24
@@ -26,7 +28,7 @@ def tick(agent_table, lookup_table, col_to_state, sleep_duration):
             target_states = col_to_state[agent_table[:, TARGET]]
             finish = (agent_table[:, CURR] == target_states) & (agent_table[:, STATE] == 1)
             agent_table[finish, STATE] = 0
-            
+            print(agent_table[:, CURR])
             # Morning Trigger: Home to Work
             start_mask = (agent_table[:, START] == current_hour) & (agent_table[:, STATE] == 0)
             agent_table[start_mask, TARGET] = agent_table[start_mask, WORK]
@@ -45,7 +47,7 @@ def tick(agent_table, lookup_table, col_to_state, sleep_duration):
             arrived_total = 0
 
             # node_id = state[0] if isinstance(state, tuple) else state
-            
+            # LOCATION AND SEGMENT TRACKER ======================================================
             count_curr = np.bincount(agent_table[:, CURR], minlength=num_states)
             active_indices = (np.where(count_curr > 0)[0])
             active_indices_list = active_indices.tolist()
@@ -60,8 +62,12 @@ def tick(agent_table, lookup_table, col_to_state, sleep_duration):
                     cord_count.append((x, (station_node_coordinates[node_id]['lat'], station_node_coordinates[node_id]['lon'])))
                 else:
                     cord_count.append((x, (track_node_coordinates[node_id]['lat'], track_node_coordinates[node_id]['lon'])))
-            print(cord_count)
-            time.sleep(5)
+            if not master_usage is None:
+                flat = master_usage.reset_index()
+                # Try running this line even if autocomplete is shy
+                flat.to_parquet(f"usage_hour_{current_hour}.parquet", index=False)
+
+            # time.sleep(1)
             commuter_count = np.sum(start_mask) + np.sum(end_mask)
             if commuter_count > 0:
                 print(f"Log: {commuter_count} agents started commuting.")
@@ -93,8 +99,33 @@ def tick(agent_table, lookup_table, col_to_state, sleep_duration):
                 valid_moves = (next_steps != -1)
                 
                 agents_to_move = active_agents[valid_moves]
+
+                agent_cord = agent_table[agents_to_move, CURR]
+                next_step_cord = next_steps[valid_moves]
+                # 1. Create a mask where the nodes are NOT the same
+                movement_mask = (agent_cord != next_step_cord)
+
+                # 2. Use that mask to select only the rows that changed
+                agent_cord_cleaned = agent_cord[movement_mask]
+                next_step_cord_cleaned = next_step_cord[movement_mask]
+
+                # 1. Load the parallel arrays into a GPU table
+                df = cp.DataFrame({
+                    'start_node': agent_cord_cleaned, 
+                    'end_node': next_step_cord_cleaned
+                })
+                tick_usage = df.value_counts()
+                if master_usage is None:
+                    # Start the tally with the first batch of data
+                    master_usage = tick_usage
+                else:
+                    # Add new data to the total, filling missing tracks with 0
+                    master_usage = master_usage.add(tick_usage, fill_value=0)
+
                 agent_table[agents_to_move, CURR] = next_steps[valid_moves]
-                
+   
+                # time.sleep(1000)
+
                 # Deactivate agents that hit a dead end so they don't loop infinitely
                 stuck_agents = active_agents[~valid_moves]
                 agent_table[stuck_agents, STATE] = 0 
