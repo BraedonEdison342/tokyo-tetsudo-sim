@@ -76,10 +76,11 @@ if __name__ == "__main__":
     state_to_index = {state: idx for idx, state in enumerate(all_states)}
     index_to_state = {idx: state for idx, state in enumerate(all_states)}
 
-    print("🧠 Step 3: Loading into GPU...")
+    print("⚙️ Step 3: Preparing cuDF Edge List...")
+    # THE FIX 1: Swap src and dst to build the REVERSED graph!
     df = cudf.DataFrame({
-        'source': [state_to_index[src] for d, src, w in state_edge], 
-        'destination': [state_to_index[dst] for dst, s, w in state_edge], 
+        'source': [state_to_index[dst] for dst, src, w in state_edge], 
+        'destination': [state_to_index[src] for dst, src, w in state_edge], 
         'weight': [w for d, s, w in state_edge]
     })
 
@@ -99,6 +100,8 @@ if __name__ == "__main__":
             vertices = cp.asarray(results['vertex'])
             predecessors = cp.asarray(results['predecessor'])
             lookup_table_gpu[vertices, i] = predecessors
+            
+            lookup_table_gpu[target_idx, i] = target_idx
 
     print(f"✅ Success! Table Shape: {lookup_table_gpu.shape}")
     
