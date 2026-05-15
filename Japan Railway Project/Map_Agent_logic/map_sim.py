@@ -12,6 +12,8 @@ def tick(agent_table, lookup_table, sleep_duration):
     Primary simulation loop that handles time, shift triggers, and movement.
     """
     tick_time = 0
+    arrived_total = 0
+
     
     while True:
         # ------------------ Update Clock ------------------
@@ -21,10 +23,13 @@ def tick(agent_table, lookup_table, sleep_duration):
         # ------------------ Shift Triggers ------------------
         # We only check for new commuters at the start of each simulated hour
         if tick_time % 360 == 0:
-            print("Press 'Space' to pass one hour \n")
-            keyboard.wait('space') 
-            print(f"Current Simulation Time: {current_hour}:00")
+            
+            # print("Press 'Space' to pass one hour \n")
+            # keyboard.wait('space') 
+            print(f"Current Simulation Time: {current_hour}:00 -----------------------------")
 
+            finish = (agent_table[:, CURR] == agent_table[:, TARGET]) & (agent_table[:, STATE] == 1)
+            agent_table[finish, STATE] = 0
             # Morning Trigger: Home to Work
             # Finds idle agents whose start time is now
             start_mask = (agent_table[:, START] == current_hour) & (agent_table[:, STATE] == 0)
@@ -37,32 +42,37 @@ def tick(agent_table, lookup_table, sleep_duration):
             agent_table[end_mask, TARGET] = agent_table[end_mask, HOME]
             agent_table[end_mask, STATE] = 1
 
+            active_mask = (agent_table[:, STATE] == 1)
+            active_agents = np.flatnonzero(active_mask)
+      
+
+            print(f"{arrived_total} Agents have made it to their destination!")
+            print(f"{np.size(active_agents)} Agents are in transit")
+            arrived_total = 0
+
             commuter_count = np.sum(start_mask) + np.sum(end_mask)
             if commuter_count > 0:
                 print(f"Log: {commuter_count} agents started commuting.")
 
         # ------------------ Movement Engine ------------------
         # Identify all agents currently on the tracks
-        active_mask = (agent_table[:, STATE] == 1)
-        
-        if np.any(active_mask):
+
+        if np.any(active_agents):
             # Check for arrivals: If current location matches target, deactivate them
-            arrived_mask = active_mask & (agent_table[:, CURR] == agent_table[:, TARGET])
-            agent_table[arrived_mask, STATE] = 0
+            arrived_mask = (agent_table[active_agents, CURR] == agent_table[active_agents, TARGET])
+            arrived_indices = active_agents[arrived_mask]
+            arrived_total = len(arrived_indices) + arrived_total
+            agent_table[arrived_indices, STATE] = 0
+            active_agents = active_agents[~arrived_mask]
             
-            # Update the active mask to exclude those who just arrived
-            moving_mask = (agent_table[:, STATE] == 1)
-            
-            if np.any(moving_mask):
-                # Move active agents to the next node using the lookup table
-                # format: lookup_table[current_node, goal_station]
-                current_nodes = agent_table[moving_mask, CURR]
-                target_nodes = agent_table[moving_mask, TARGET]
-                
-                agent_table[moving_mask, CURR] = lookup_table[current_nodes, target_nodes]
+            if active_agents.size > 0:
+                curr_nodes = agent_table[active_agents, CURR]
+                target_nodes = agent_table[active_agents, TARGET]
+                agent_table[active_agents, CURR] = lookup_table[curr_nodes, target_nodes]
 
         # ------------------ Loop Maintenance ------------------
         tick_time += 1
+
 
 
 if __name__ == "__main__":
@@ -74,7 +84,7 @@ if __name__ == "__main__":
 
     print("Loading state mappings...")
     try:
-        with open('state_mappings.pkl', 'rb') as f:
+        with open('Map_Agent_logic\state_mappings.pkl', 'rb') as f:
             mappings = pickle.load(f)
         state_to_index = mappings['state_to_index']
         station_ids = mappings['station_ids']
@@ -118,6 +128,6 @@ if __name__ == "__main__":
 
     # ------------------ Start Simulation ------------------
     print("Loading lookup table and starting ticks...")
-    lookup_table = np.load('railway_lookup_table.npy', mmap_mode='r')
+    lookup_table = np.load('Map_Agent_logic\\railway_lookup_table.npy', mmap_mode='r')
     
     tick(agent_table, lookup_table, 0.001)
