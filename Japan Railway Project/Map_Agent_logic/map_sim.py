@@ -1,5 +1,6 @@
 import cupy as np
 import cudf as cp
+import cupyx
 import pickle
 import time
 from data_node_builder import setup
@@ -8,14 +9,15 @@ from data_node_builder import setup
 # Column indices for the agent table
 CURR, WORK, HOME, RAND, TARGET, STATE, START, END = 0, 1, 2, 3, 4, 5, 6, 7
 
-def tick(agent_table, lookup_table, col_to_state, sleep_duration):
+def tick(agent_table, lookup_table, col_to_state, sleep_duration, num_states):
     """
     Primary simulation loop that handles time, shift triggers, and movement.
     """
     tick_time = 0
     arrived_total = 0
-    master_usage = None
- 
+    # Outside the loop - allocated exactly ONCE
+    master_track_accumulator = np.zeros(num_states * num_states, dtype=np.int32)
+    
     while True:
         total_minutes = tick_time // 6
         current_hour = (total_minutes // 60) % 24
@@ -47,25 +49,38 @@ def tick(agent_table, lookup_table, col_to_state, sleep_duration):
             arrived_total = 0
 
             # node_id = state[0] if isinstance(state, tuple) else state
-            # LOCATION AND SEGMENT TRACKER ======================================================
-            count_curr = np.bincount(agent_table[:, CURR], minlength=num_states)
-            active_indices = (np.where(count_curr > 0)[0])
-            active_indices_list = active_indices.tolist()
-            active_counts = count_curr[active_indices]
+            # ============================== LOCATION AND SEGMENT TRACKER ======================================================
+            # count_curr = np.bincount(agent_table[:, CURR], minlength=num_states)
+            # active_indices = (np.where(count_curr > 0)[0])
+            # active_indices_list = active_indices.tolist()
+            # active_counts = count_curr[active_indices]
 
-            cord_count = []
-            for x,y in zip(active_counts, active_indices_list):
-                x = int(x.tolist())
-                state = index_to_state[y]
-                node_id = state[0] if isinstance(state, tuple) else state   
-                if node_id in station_node_coordinates:
-                    cord_count.append((x, (station_node_coordinates[node_id]['lat'], station_node_coordinates[node_id]['lon'])))
-                else:
-                    cord_count.append((x, (track_node_coordinates[node_id]['lat'], track_node_coordinates[node_id]['lon'])))
-            if not master_usage is None:
-                flat = master_usage.reset_index()
-                # Try running this line even if autocomplete is shy
-                flat.to_parquet(f"usage_hour_{current_hour}.parquet", index=False)
+            # cord_count = []
+            # for x,y in zip(active_counts, active_indices_list):
+            #     x = int(x.tolist())
+            #     state = index_to_state[y]
+            #     node_id = state[0] if isinstance(state, tuple) else state   
+            #     if node_id in station_node_coordinates:
+            #         cord_count.append((x, (station_node_coordinates[node_id]['lat'], station_node_coordinates[node_id]['lon'])))
+            #     else:
+            #         cord_count.append((x, (track_node_coordinates[node_id]['lat'], track_node_coordinates[node_id]['lon'])))
+            
+            # Finds all array slots that aren't zero
+            flat_indices = np.flatnonzero(master_track_accumulator)
+            counts = master_track_accumulator[flat_indices]
+            start_node = flat_indices // num_states
+            end_node = flat_indices % num_states
+
+            df = cp.DataFrame({
+                'start_node': start_node, 
+                'end_node': end_node,
+                'counts': counts
+            })
+
+            df.to_parquet(f"{current_hour} sim")
+
+            master_track_accumulator.fill(0)
+
 
             # time.sleep(1)
             commuter_count = np.sum(start_mask) + np.sum(end_mask)
@@ -109,18 +124,8 @@ def tick(agent_table, lookup_table, col_to_state, sleep_duration):
                 agent_cord_cleaned = agent_cord[movement_mask]
                 next_step_cord_cleaned = next_step_cord[movement_mask]
 
-                # 1. Load the parallel arrays into a GPU table
-                df = cp.DataFrame({
-                    'start_node': agent_cord_cleaned, 
-                    'end_node': next_step_cord_cleaned
-                })
-                tick_usage = df.value_counts()
-                if master_usage is None:
-                    # Start the tally with the first batch of data
-                    master_usage = tick_usage
-                else:
-                    # Add new data to the total, filling missing tracks with 0
-                    master_usage = master_usage.add(tick_usage, fill_value=0)
+                paring_array = (agent_cord_cleaned * num_states) + next_step_cord_cleaned
+                cupyx.scatter_add(master_track_accumulator, paring_array, 1)
 
                 agent_table[agents_to_move, CURR] = next_steps[valid_moves]
    
@@ -174,6 +179,9 @@ if __name__ == "__main__":
     valid_state_indices = np.array(valid_state_indices)
     col_to_state = np.array(col_to_state_cpu, dtype=np.int32) # Sent to GPU
     num_goals = len(valid_col_indices)
+    print(len(valid_state_indices))
+    print(num_goals)
+    print(num_states)
 
     # 2. Set up departure probabilities 
     hours = np.arange(24)
@@ -214,4 +222,4 @@ if __name__ == "__main__":
     lookup_table = np.load('Map_Agent_logic/railway_lookup_table.npy', mmap_mode='r')
     
     # Pass the bridge array into the tick loop
-    tick(agent_table, lookup_table, col_to_state, 0.001)
+    tick(agent_table, lookup_table, col_to_state, 0.001, num_states)
