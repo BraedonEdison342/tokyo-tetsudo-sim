@@ -176,13 +176,144 @@ def build_adjacency_list_optimized(elements, spatial_bins, wider_spatial_bins, s
     station_coords = {el['id']: {'lat': el['lat'], 'lon': el['lon']} for el in station_elements}
     
     name_to_ref = {
+        # === JR EAST (MAIN COMMUTER NETWORK) ===
         "Yamanote Line": ["JY"],
+        
+        # Chuo Line Variants (Macron & Standard)
         "Chūō Line": ["JC"],
+        "Chuo Line": ["JC"],
         "Chūō Line (Rapid)": ["JC"],
+        "Chuo Line (Rapid)": ["JC"],
         "Chūō-Sōbu Line": ["JB"],
+        "Chuo-Sobu Line": ["JB"],
+        "Chūō-Sōbu Line Local": ["JB"],
+        "Chuo-Sobu Line Local": ["JB"],
+        
+        # Keihin-Tohoku & Negishi
         "Keihin-Tōhoku Line": ["JK"],
+        "Keihin-Tohoku Line": ["JK"],
+        "Negishi Line": ["JK"],
+        
+        # Saikyo & Shonan-Shinjuku
         "Saikyō Line": ["JA"],
-        "Shōnan-Shinjuku Line": ["JS"]
+        "Saikyo Line": ["JA"],
+        "Shōnan-Shinjuku Line": ["JS"],
+        "Shonan-Shinjuku Line": ["JS"],
+        
+        # Tokaido / Ueno-Tokyo / Takasaki / Utsunomiya Corridors
+        "Tōkaidō Line": ["JT"],
+        "Tokaido Line": ["JT"],
+        "Ueno-Tokyo Line": ["JU"],
+        "Takasaki Line": ["JU"],
+        "Utsunomiya Line": ["JU"],
+        "Tōhoku Main Line": ["JU"],
+        "Tohoku Main Line": ["JU"],
+        
+        # Sobu Main & Yokosuka Extensions
+        "Sōbu Rapid Line": ["JO"],
+        "Sobu Rapid Line": ["JO"],
+        "Sōbu Main Line": ["JO"],
+        "Sobu Main Line": ["JO"],
+        "Yokosuka Line": ["JO"],
+        
+        # Joban Line
+        "Jōban Line": ["JJ"],
+        "Joban Line": ["JJ"],
+        "Jōban Line (Rapid)": ["JJ"],
+        "Joban Line (Rapid)": ["JJ"],
+        "Jōban Line (Local)": ["JL"],
+        "Joban Line (Local)": ["JL"],
+        
+        # Peripheral Commuter Outer Loops
+        "Musashino Line": ["JM"],
+        "Keiyō Line": ["JE"],
+        "Keiyo Line": ["JE"],
+        "Yokohama Line": ["JH"],
+        "Nambu Line": ["JN"],
+        "Tsurumi Line": ["JI"],
+        "Sagami Line": ["JH"],
+        "Hachikō Line": ["JR"],
+        "Hachiko Line": ["JR"],
+        "Itsukaichi Line": ["JC"],
+        "Ōme Line": ["JC"],
+        "Ome Line": ["JC"],
+
+        # === TOKYO METRO SUBWAYS ===
+        "Tokyo Metro Ginza Line": ["G"],
+        "Tokyo Metro Marunouchi Line": ["M"],
+        "Tokyo Metro Hibiya Line": ["H"],
+        "Tokyo Metro Tōzai Line": ["T"],
+        "Tokyo Metro Tozai Line": ["T"],
+        "Tokyo Metro Chiyoda Line": ["C"],
+        "Tokyo Metro Yūrakuchō Line": ["Y"],
+        "Tokyo Metro Yurakucho Line": ["Y"],
+        "Tokyo Metro Hanzōmon Line": ["Z"],
+        "Tokyo Metro Hanzomon Line": ["Z"],
+        "Tokyo Metro Namboku Line": ["N"],
+        "Tokyo Metro Fukutoshin Line": ["F"],
+
+        # === TOEI SUBWAYS ===
+        "Toei Asakusa Line": ["A"],
+        "Toei Mita Line": ["I"],
+        "Toei Shinjuku Line": ["S"],
+        "Toei Ōedo Line": ["E"],
+        "Toei Oedo Line": ["E"],
+
+        # === PRIVATE RAILWAYS (MAJOR GREATER TOKYO COMMUTER NETWORKS) ===
+        # Odakyu
+        "Odakyu Odawara Line": ["OH"],
+        "Odakyu Enoshima Line": ["OE"],
+        "Odakyu Tama Line": ["OT"],
+        
+        # Keio
+        "Keiō Line": ["KO"],
+        "Keio Line": ["KO"],
+        "Keiō New Line": ["KO"],
+        "Keio New Line": ["KO"],
+        "Keiō Sagamihara Line": ["KO"],
+        "Keio Sagamihara Line": ["KO"],
+        "Keiō Inokashira Line": ["IN"],
+        "Keio Inokashira Line": ["IN"],
+        
+        # Seibu
+        "Seibu Ikebukuro Line": ["SI"],
+        "Seibu Shinjuku Line": ["SS"],
+        "Seibu Haijima Line": ["SS"],
+        "Seibu Tamako Line": ["ST"],
+        "Seibu Kokubunji Line": ["SK"],
+        
+        # Tobu
+        "Tobu Skytree Line": ["TS"],
+        "Tobu Isesaki Line": ["TI"],
+        "Tobu Tojo Line": ["TJ"],
+        "Tōbu Tōjō Line": ["TJ"],
+        "Tobu Noda Line": ["TD"],
+        "Tobu Urban Park Line": ["TD"],
+        
+        # Keisei (Chiba Connections)
+        "Keisei Main Line": ["KS"],
+        "Keisei Oshiage Line": ["KS"],
+        "Keisei Chiba Line": ["KS"],
+        
+        # Tokyu (Kanagawa/Yokohama Connections)
+        "Tokyu Toyoko Line": ["TY"],
+        "Tōkyū Tōyoko Line": ["TY"],
+        "Tokyu Den-en-toshi Line": ["DT"],
+        "Tokyu Meguro Line": ["MG"],
+        "Tokyu Oimachi Line": ["OM"],
+        "Tokyu Ikegami Line": ["IK"],
+        
+        # Keikyu (South Tokyo / Yokohama Gateway)
+        "Keikyu Main Line": ["KK"],
+        "Keikyū Main Line": ["KK"],
+        "Keikyu Airport Line": ["KK"],
+        "Keikyu Kurihama Line": ["KK"],
+        
+        # Other Express / Transit Lines
+        "Tsukuba Express": ["TX"],
+        "Tokyo Monorail": ["MO"],
+        "Rinkai Line": ["R"],
+        "Yurikamome": ["U"]
     }
     
     for node in elements:
@@ -647,8 +778,8 @@ def map_all_stations(station_name_map, station_elements, interactive_map, statio
 def setup(optimized):
     """Handles data ingestion, indexing, and graph construction."""
     print("📦 Packing logistics data...")
-    raw_station_data = load_json('OSM_data/tokyo_railway_station.json')
-    cleaned_track_data = load_json('OSM_data/tokyo_railway_cleaned.json')
+    raw_station_data = load_json('tokyo_railway_station.json')
+    cleaned_track_data = load_json('tokyo_railway_cleaned.json')
 
     track_elements = cleaned_track_data.get('elements', [])
     station_elements = raw_station_data.get('elements', [])

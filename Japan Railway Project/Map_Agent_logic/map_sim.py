@@ -9,15 +9,14 @@ from data_node_builder import setup
 # Column indices for the agent table
 CURR, WORK, HOME, RAND, TARGET, STATE, START, END = 0, 1, 2, 3, 4, 5, 6, 7
 
-def tick(agent_table, lookup_table, col_to_state, sleep_duration, num_states):
+def tick(agent_table, lookup_table, col_to_state, sleep_duration, num_states, lat_lon_reference):
     """
     Primary simulation loop that handles time, shift triggers, and movement.
     """
     tick_time = 0
     arrived_total = 0
     # Outside the loop - allocated exactly ONCE
-    master_track_accumulator = np.zeros(num_states * num_states, dtype=np.int32)
-    
+    hourly_edge_buffer = []
     while True:
         total_minutes = tick_time // 6
         current_hour = (total_minutes // 60) % 24
@@ -47,45 +46,39 @@ def tick(agent_table, lookup_table, col_to_state, sleep_duration, num_states):
             print(f"{arrived_total} Agents have made it to their destination!")
             print(f"{np.size(active_agents)} Agents are in transit")
             arrived_total = 0
+            if len(hourly_edge_buffer) >0:
+                # Finds all array slots that aren't zero
+                all_movements = np.concatenate(hourly_edge_buffer)
+                unique_edges, counts = np.unique(all_movements, return_counts=True)
+                start_node = unique_edges // num_states
+                end_node = unique_edges % num_states
 
-            # node_id = state[0] if isinstance(state, tuple) else state
-            # ============================== LOCATION AND SEGMENT TRACKER ======================================================
-            # count_curr = np.bincount(agent_table[:, CURR], minlength=num_states)
-            # active_indices = (np.where(count_curr > 0)[0])
-            # active_indices_list = active_indices.tolist()
-            # active_counts = count_curr[active_indices]
-
-            # cord_count = []
-            # for x,y in zip(active_counts, active_indices_list):
-            #     x = int(x.tolist())
-            #     state = index_to_state[y]
-            #     node_id = state[0] if isinstance(state, tuple) else state   
-            #     if node_id in station_node_coordinates:
-            #         cord_count.append((x, (station_node_coordinates[node_id]['lat'], station_node_coordinates[node_id]['lon'])))
-            #     else:
-            #         cord_count.append((x, (track_node_coordinates[node_id]['lat'], track_node_coordinates[node_id]['lon'])))
-            
-            # Finds all array slots that aren't zero
-            flat_indices = np.flatnonzero(master_track_accumulator)
-            counts = master_track_accumulator[flat_indices]
-            start_node = flat_indices // num_states
-            end_node = flat_indices % num_states
-
-            df = cp.DataFrame({
-                'start_node': start_node, 
-                'end_node': end_node,
-                'counts': counts
-            })
-
-            df.to_parquet(f"{current_hour} sim")
-
-            master_track_accumulator.fill(0)
+                df = cp.DataFrame({
+                    'current_hour': current_hour,
+                    'start_node': start_node, 
+                    'end_node': end_node,
+                    'counts': counts,
+                    'start_lon': 0.0,
+                    'start_lat': 0.0,
+                    'end_lon': 0.0,
+                    'end_lat': 0.0
+                })
 
 
-            # time.sleep(1)
-            commuter_count = np.sum(start_mask) + np.sum(end_mask)
-            if commuter_count > 0:
-                print(f"Log: {commuter_count} agents started commuting.")
+                df['start_lon'] = lat_lon_reference['lon'].iloc[df['start_node']].values
+                df['start_lat'] = lat_lon_reference['lat'].iloc[df['start_node']].values
+                df['end_lon'] = lat_lon_reference['lon'].iloc[df['end_node']].values
+                df['end_lat'] = lat_lon_reference['lat'].iloc[df['end_node']].values
+
+                df.to_parquet(f"../parquet_files/{current_hour}.parquet")
+
+                hourly_edge_buffer = []
+
+
+                # time.sleep(1)
+                commuter_count = np.sum(start_mask) + np.sum(end_mask)
+                if commuter_count > 0:
+                    print(f"Log: {commuter_count} agents started commuting.")
 
         # ------------------ Movement Engine ------------------
         if np.any(active_agents):
@@ -125,8 +118,8 @@ def tick(agent_table, lookup_table, col_to_state, sleep_duration, num_states):
                 next_step_cord_cleaned = next_step_cord[movement_mask]
 
                 paring_array = (agent_cord_cleaned * num_states) + next_step_cord_cleaned
-                cupyx.scatter_add(master_track_accumulator, paring_array, 1)
-
+                hourly_edge_buffer.append(paring_array)
+                
                 agent_table[agents_to_move, CURR] = next_steps[valid_moves]
    
                 # time.sleep(1000)
@@ -149,7 +142,7 @@ if __name__ == "__main__":
 
     print("Loading state mappings...")
     try:
-        with open('Map_Agent_logic/state_mappings.pkl', 'rb') as f:
+        with open('./state_mappings.pkl', 'rb') as f:
             mappings = pickle.load(f)
         state_to_index = mappings['state_to_index']
         station_ids = mappings['station_ids']
@@ -157,11 +150,29 @@ if __name__ == "__main__":
     except FileNotFoundError:
         print("Error: state_mappings.pkl not found. Run the builder script first.")
         exit()
-
-   # ------------------ Population Setup ------------------
-    num_agents = 10000000
     num_states = len(state_to_index)
 
+    node_lat = [0.0] * num_states
+    node_lon = [0.0] * num_states
+    for i in range(num_states):
+        state = index_to_state[i]
+        node_id = state[0] if isinstance(state, tuple) else state  
+
+        if node_id in station_node_coordinates:
+            node_lat[i] = station_node_coordinates[node_id]['lat']
+            node_lon[i] = station_node_coordinates[node_id]['lon']
+        else:
+            node_lat[i] = track_node_coordinates[node_id]['lat']
+            node_lon[i] = track_node_coordinates[node_id]['lon']
+
+    lat_lon_reference = cp.DataFrame({
+        'lat': node_lat, 
+        'lon': node_lon
+    }).astype('float64')
+
+   # ------------------ Population Setup ------------------
+    num_agents = 1000000
+    
     print(f"Initializing {num_agents} agents...")
 
     # 1. Create a bridge array mapping Column IDs back to State IDs
@@ -206,7 +217,7 @@ if __name__ == "__main__":
     work_ends = (work_starts + 9) % 24
     
     # Assemble the master agent table
-    agent_table = np.column_stack((
+    agent_table = np.column_stack(( 
         current_locs, 
         work_locs, 
         home_locs, 
@@ -215,11 +226,11 @@ if __name__ == "__main__":
         np.zeros(num_agents, dtype=np.int8), 
         work_starts,
         work_ends
-    )).astype(np.int32)
+    )).astype(np.int64)
 
     # ------------------ Start Simulation ------------------
     print("Loading lookup table and starting ticks...")
-    lookup_table = np.load('Map_Agent_logic/railway_lookup_table.npy', mmap_mode='r')
+    lookup_table = np.load('./railway_lookup_table.npy', mmap_mode='r')
     
     # Pass the bridge array into the tick loop
-    tick(agent_table, lookup_table, col_to_state, 0.001, num_states)
+    tick(agent_table, lookup_table, col_to_state, 0.001, num_states, lat_lon_reference)

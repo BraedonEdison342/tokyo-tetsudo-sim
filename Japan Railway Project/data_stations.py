@@ -20,10 +20,10 @@ def node_cord(elements, f):
 if __name__ == "__main__":
     print("📍 Loading Station Data...")
     try:
-        station_data = load_json("tokyo_railway_station.json")
+        station_data = load_json("OSM_data/tokyo_railway_station.json")
         station_elements = station_data.get('elements', [])
         
-        station_map = node_cord(station_elements)
+        station_map = node_cord(station_elements, None)
         print(f"Successfully mapped {len(station_map)} station locations.")
         
         # Example: Print the first 5 stations found
